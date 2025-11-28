@@ -63,7 +63,14 @@ func (uart *UART) Configure(config UARTConfig) {
 // handleInterrupt should be called from the appropriate interrupt handler for
 // this UART instance.
 func (uart *UART) handleInterrupt(interrupt.Interrupt) {
-	uart.Receive(byte((uart.rxReg.Get() & 0xFF)))
+	isr := uart.Bus.ISR.Get()
+	if isr&stm32.USART_ISR_ORE != 0 {
+		uart.Bus.ICR.SetBits(stm32.USART_ICR_ORECF)
+	}
+	for isr&stm32.USART_ISR_RXNE != 0 {
+		uart.Receive(byte((uart.rxReg.Get() & 0xFF)))
+		isr = uart.Bus.ISR.Get()
+	}
 }
 
 // SetBaudRate sets the communication speed for the UART. Defer to chip-specific
