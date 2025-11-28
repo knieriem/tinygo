@@ -1,0 +1,12 @@
+{
+    "inherits": ["cortex-m0plus"],
+    "build-tags": ["nucleog031k8", "stm32g031", "stm32g0x1", "stm32g0", "stm32"],
+    "serial": "uart",
+    "linkerscript": "targets/stm32g031k8.ld",
+    "extra-files": [
+        "src/device/stm32/stm32g031.s"
+    ],
+    "flash-method": "openocd",
+    "openocd-interface": "stlink",
+    "openocd-target": "stm32g0x"
+}

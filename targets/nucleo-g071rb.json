@@ -1,0 +1,12 @@
+{
+    "inherits": ["cortex-m0plus"],
+    "build-tags": ["nucleog071rb", "stm32g071", "stm32g0x1", "stm32g0", "stm32"],
+    "serial": "uart",
+    "linkerscript": "targets/stm32g071rb.ld",
+    "extra-files": [
+        "src/device/stm32/stm32g071.s"
+    ],
+    "flash-method": "openocd",
+    "openocd-interface": "stlink",
+    "openocd-target": "stm32g0x"
+}
