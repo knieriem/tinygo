@@ -1,4 +1,4 @@
-//go:build atmega || fe310 || k210 || (nxp && !mk66f18) || (stm32 && !stm32f7x2 && !stm32l5x2)
+//go:build atmega || fe310 || k210 || (nxp && !mk66f18) || (stm32 && !stm32f7x2 && !stm32l5x2 && !stm32h723 && !stm32h757_cm7)
 
 // This file implements the SPI Tx function for targets that don't have a custom
 // (faster) implementation for it.

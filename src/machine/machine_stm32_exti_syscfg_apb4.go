@@ -1,4 +1,4 @@
-//go:build stm32 && !stm32f1 && !stm32l5 && !stm32wlx && !stm32g0 && !stm32h723 && !stm32h757_cm7
+//go:build stm32h723 || stm32h757_cm7
 
 package machine
 
@@ -23,5 +23,5 @@ func getEXTIConfigRegister(pin uint8) *volatile.Register32 {
 
 func enableEXTIConfigRegisters() {
 	// Enable SYSCFG
-	stm32.RCC.APB2ENR.SetBits(stm32.RCC_APB2ENR_SYSCFGEN)
+	stm32.RCC.APB4ENR.SetBits(stm32.RCC_APB4ENR_SYSCFGEN)
 }
