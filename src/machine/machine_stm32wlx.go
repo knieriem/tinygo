@@ -330,7 +330,7 @@ func (uart *UART) setRegisters() {
 	uart.rxReg = &uart.Bus.RDR
 	uart.txReg = &uart.Bus.TDR
 	uart.statusReg = &uart.Bus.ISR
-	uart.txEmptyFlag = stm32.USART_ISR_TXFNF //(TXFNF == TXE == bit 7, but depends alternate RM0461/1094)
+	uart.txEmptyFlag = stm32.USART_ISR_TXE //(TXE == TXFNF == bit 7, but depends alternate RM0461/1094)
 }
 
 //---------- Timer related code
