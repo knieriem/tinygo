@@ -251,7 +251,10 @@ gen-device-kendryte: build/gen-device-svd
 	GO111MODULE=off $(GO) fmt ./src/device/kendryte
 
 gen-device-stm32: build/gen-device-svd
-	./build/gen-device-svd -source=https://github.com/tinygo-org/stm32-svd lib/stm32-svd/svd src/device/stm32/
+	./build/gen-device-svd \
+		-periph-alias IWDG=IWDG1 \
+		-source=https://github.com/tinygo-org/stm32-svd \
+		lib/stm32-svd/svd src/device/stm32/
 	GO111MODULE=off $(GO) fmt ./src/device/stm32
 
 gen-device-rp: build/gen-device-svd
