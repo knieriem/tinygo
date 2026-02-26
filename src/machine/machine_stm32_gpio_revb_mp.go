@@ -1,4 +1,4 @@
-//go:build stm32wlx
+//go:build stm32wlx || stm32h757_cm7
 
 package machine
 

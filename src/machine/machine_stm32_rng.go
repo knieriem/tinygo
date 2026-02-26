@@ -1,4 +1,4 @@
-//go:build stm32 && !(stm32f103 || stm32l0x1 || stm32g0 || stm32u0)
+//go:build stm32 && !(stm32f103 || stm32l0x1 || stm32g0 || stm32h723 || stm32h757_cm7 || stm32u0)
 
 package machine
 
