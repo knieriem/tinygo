@@ -9,6 +9,10 @@ import (
 	"unsafe"
 )
 
+// This file provides a driver for the M_CAN based STM32 FDCAN
+// peripherals. (As the ATSAME51/54 driver is based on M_CAN too,
+// the drivers theoretically could be merged).
+//
 // Exported API in src/machine/can.go
 
 // FDCAN Message RAM configuration
