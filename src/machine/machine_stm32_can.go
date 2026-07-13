@@ -76,6 +76,23 @@ const (
 	FDCAN_IT_ERROR_PASSIVE        = 0x00800000
 )
 
+// Register field positions and masks.
+const (
+	// RXF0S.F0FL[6:0]
+	mcanF0FLmask = 0x7F
+
+	// RXF0S.F0GI[13:8]
+	mcanF0GIpos  = 8
+	mcanF0GImask = 0x3F
+
+	// TXFQS.TFQPI[20:16]
+	mcanTFQPIpos  = 16
+	mcanTFQPImask = 0x1F
+
+	// TXFQS.TFFL[5:0]
+	mcanTFFLmask = 0x3F
+)
+
 // CAN is a STM32G0's CAN/FDCAN peripheral.
 type CAN struct {
 	Bus             *stm32.FDCAN_Type
@@ -278,7 +295,7 @@ func (can *CAN) Stop() error {
 
 // txFIFOLevel implements [CAN.TxFIFOLevel].
 func (can *CAN) txFIFOLevel() (int, int) {
-	free := int(can.Bus.TXFQS.Get() & 0x07) // TFFL[2:0]
+	free := int(can.Bus.TXFQS.Get() & mcanTFFLmask)
 	return sramcanTFQNbr - free, sramcanTFQNbr
 }
 
@@ -296,7 +313,7 @@ func (can *CAN) tx(id canID, flags canFlags, data []byte) error {
 	// Use FD framing if configured to always use FD, or if data exceeds classic CAN max.
 	isFD := flags&canFlagFDF != 0 || length > 8
 
-	putIndex := (can.Bus.TXFQS.Get() >> 16) & 0x03 // TFQPI[1:0]
+	putIndex := (can.Bus.TXFQS.Get() >> mcanTFQPIpos) & mcanTFQPImask
 	txAddr := can.sramBase() + sramcanTFQSA + uintptr(putIndex)*sramcanTFQSize
 
 	// Header word 1: identifier and flags.
@@ -337,7 +354,7 @@ func (can *CAN) rxFIFOLevel() (int, int) {
 	if canInstances[can.instance] != nil {
 		return 0, 0
 	}
-	level := int(can.Bus.RXF0S.Get() & 0x0F) // F0FL[3:0]
+	level := int(can.Bus.RXF0S.Get() & mcanF0FLmask)
 	return level, sramcanRF0Nbr
 }
 
@@ -381,8 +398,8 @@ func (can *CAN) rxPoll() error {
 // processRxFIFO0 drains RX FIFO 0 and delivers each message to cb.
 // Used by both rxPoll (poll mode) and canHandleInterrupt (interrupt mode).
 func processRxFIFO0(can *CAN, cb canRxCallback) {
-	for can.Bus.RXF0S.Get()&0x0F != 0 {
-		getIndex := (can.Bus.RXF0S.Get() >> 8) & 0x03 // F0GI[1:0]
+	for can.Bus.RXF0S.Get()&mcanF0FLmask != 0 {
+		getIndex := (can.Bus.RXF0S.Get() >> mcanF0GIpos) & mcanF0GImask
 		rxAddr := can.sramBase() + sramcanRF0SA + uintptr(getIndex)*sramcanRF0Size
 
 		w1 := *(*uint32)(unsafe.Pointer(rxAddr))
