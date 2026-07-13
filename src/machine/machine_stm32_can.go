@@ -373,7 +373,12 @@ func (can *CAN) setRxCallback(cb canRxCallback) {
 // No-op when interrupt-driven receive is active.
 func (can *CAN) rxPoll() error {
 	if canInstances[can.instance] != nil {
-		return nil
+		// FIXME: disable return to make RxPoll work.
+		// If can.SetRxCallback is called, canInstances is always set,
+		// also if the intention is to use RxPoll, not interrupts.
+		if false {
+			return nil
+		}
 	}
 	cb := canRxCB[can.instance]
 	if cb == nil {
