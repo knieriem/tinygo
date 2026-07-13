@@ -64,7 +64,12 @@ const (
 	// I2C pins
 	I2C0_SCL_PIN = PF1 // I2C2
 	I2C0_SDA_PIN = PF0 // I2C2
-// I2C0_ALT_FUNC = 4
+	// I2C0_ALT_FUNC = 4
+
+	// CAN pins
+	CAN1_RX      = PD0
+	CAN1_TX      = PD1
+	CAN1_STANDBY = NoPin
 )
 
 var (
@@ -89,6 +94,16 @@ var (
 		AltFuncSelector: 4,
 	}
 	I2C0 = I2C2
+
+	CAN1  = &_CAN1
+	_CAN1 = CAN{
+		Bus:             stm32.FDCAN1,
+		TxAltFuncSelect: AF9_FDCAN1_FDCAN2,
+		RxAltFuncSelect: AF9_FDCAN1_FDCAN2,
+		instance:        0,
+	}
+	// Alias for convenience
+	CAN0 = CAN1
 )
 
 func init() {

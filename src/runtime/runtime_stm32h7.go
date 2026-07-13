@@ -20,7 +20,7 @@ clock settings
 	| APB2(PCLK2) |  48 MHz   | = HCLK / 2
 	| APB3(PCLK3) |  48 MHz   | = HCLK / 2
 	| APB4(PCLK4) |  48 MHz   | = HCLK / 2
-	| PLL_Q       |  48 MHz   | (SPI1,2,3: HSI/1 / M * N / Q)
+	| PLL1_Q      |  64 MHz   | = HSI/1 / M * N / Q  (FDCAN kernel clock)
 	+-------------+-----------+
 */
 
@@ -32,7 +32,7 @@ const (
 	PLL_M = 4
 	PLL_N = 12
 	PLL_P = 1
-	PLL_Q = 4
+	PLL_Q = 3 // for FDCAN -> 192 MHz / 3 = 64 MHz
 	PLL_R = 2
 
 	PLL_RGE    = stm32.RCC_PLLCFGR_PLL1RGE_Range8
