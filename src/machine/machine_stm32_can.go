@@ -5,6 +5,7 @@ package machine
 import (
 	"device/stm32"
 	"errors"
+	"internal/binary"
 	"runtime/interrupt"
 	"unsafe"
 )
@@ -331,18 +332,24 @@ func (can *CAN) tx(id canID, flags canFlags, data []byte) error {
 	*(*uint32)(unsafe.Pointer(txAddr)) = w1
 	*(*uint32)(unsafe.Pointer(txAddr + 4)) = w2
 
-	// Copy data with 32-bit word access (Cortex-M0+).
-	for w := byte(0); w < (length+3)/4; w++ {
-		var word uint32
-		base := w * 4
-		for b := byte(0); b < 4 && base+b < length; b++ {
-			word |= uint32(data[base+b]) << (b * 8)
-		}
-		*(*uint32)(unsafe.Pointer(txAddr + 8 + uintptr(w)*4)) = word
-	}
-
+	copyToBuffer(txAddr, data[:length])
 	can.Bus.TXBAR.Set(1 << putIndex)
 	return nil
+}
+
+func copyToBuffer(txAddr uintptr, data []byte) {
+	n := len(data)
+	fullWords := n / 4
+	for w := range fullWords {
+		word := binary.LittleEndian.Uint32(data[w*4:])
+		*(*uint32)(unsafe.Pointer(txAddr + 8 + uintptr(w)*4)) = word
+	}
+	if remainder := n - fullWords*4; remainder > 0 {
+		var tail [4]byte
+		copy(tail[:], data[fullWords*4:n])
+		word := binary.LittleEndian.Uint32(tail[:])
+		*(*uint32)(unsafe.Pointer(txAddr + 8 + uintptr(fullWords)*4)) = word
+	}
 }
 
 // rxFIFOLevel implements [CAN.RxFIFOLevel].
@@ -434,12 +441,9 @@ func processRxFIFO0(can *CAN, cb canRxCallback) {
 			dataLen = 8
 		}
 		var buf [64]byte
-		for w := byte(0); w < (dataLen+3)/4; w++ {
+		for w := range (dataLen + 3) / 4 {
 			word := *(*uint32)(unsafe.Pointer(rxAddr + 8 + uintptr(w)*4))
-			base := w * 4
-			for b := byte(0); b < 4 && base+b < dataLen; b++ {
-				buf[base+b] = byte(word >> (b * 8))
-			}
+			binary.LittleEndian.PutUint32(buf[w*4:], word)
 		}
 
 		// Acknowledge before callback so the FIFO slot is freed.
