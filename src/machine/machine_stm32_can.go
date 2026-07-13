@@ -166,8 +166,8 @@ func (can *CAN) Configure(config CANConfig) error {
 
 	enableFDCANClock()
 
-	config.Tx.ConfigureAltFunc(PinConfig{Mode: PinOutput}, can.TxAltFuncSelect)
-	config.Rx.ConfigureAltFunc(PinConfig{Mode: PinInputFloating}, can.RxAltFuncSelect)
+	config.Tx.ConfigureAltFunc(PinConfig{Mode: PinModeFDCANTx}, can.TxAltFuncSelect)
+	config.Rx.ConfigureAltFunc(PinConfig{Mode: PinModeFDCANRx}, can.RxAltFuncSelect)
 
 	// Exit sleep mode.
 	can.Bus.SetCCCR_CSR(0)
