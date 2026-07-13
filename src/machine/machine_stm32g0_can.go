@@ -7,6 +7,8 @@ import "device/stm32"
 const (
 	// STM32G0B1 SRAMCAN base address
 	sramcanBase = 0x4000B400
+
+	numFDCANInstances = 2
 )
 
 // enableFDCANClock enables the FDCAN peripheral clock

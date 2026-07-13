@@ -156,11 +156,11 @@ var (
 )
 
 // flags implemented as described in [CAN.SetRxCallback]
-var canRxCB [2]canRxCallback
+var canRxCB [numFDCANInstances]canRxCallback
 
 // canInstances tracks CAN peripherals with interrupt-driven RX enabled.
 // A non-nil entry means setRxCallback was called with a non-nil callback.
-var canInstances [2]*CAN
+var canInstances [numFDCANInstances]*CAN
 
 // Configure initializes the FDCAN peripheral and starts it.
 func (can *CAN) Configure(config CANConfig) error {
