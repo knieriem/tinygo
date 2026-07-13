@@ -1,4 +1,4 @@
-//go:build stm32g0
+//go:build stm32g0 || stm32h7
 
 package machine
 

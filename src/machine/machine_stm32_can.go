@@ -1,4 +1,4 @@
-//go:build stm32g0b1
+//go:build stm32g0b1 || stm32h757_cm7 || stm32h723
 
 package machine
 
@@ -22,6 +22,7 @@ const (
 	sramcanFLENbr = 8  // Max. Filter List Extended Number
 	sramcanRF0Nbr = 3  // RX FIFO 0 Elements Number
 	sramcanRF1Nbr = 3  // RX FIFO 1 Elements Number
+	sramcanRBNbr  = 0  // Dedicated RX buffers (unused here)
 	sramcanTEFNbr = 3  // TX Event FIFO Elements Number
 	sramcanTFQNbr = 3  // TX FIFO/Queue Elements Number
 
@@ -30,6 +31,7 @@ const (
 	sramcanFLESize = 2 * 4  // Filter Extended Element Size
 	sramcanRF0Size = 18 * 4 // RX FIFO 0 Element Size (for 64-byte data)
 	sramcanRF1Size = 18 * 4 // RX FIFO 1 Element Size
+	sramcanRBSize  = 18 * 4 // RX Buffer Element Size
 	sramcanTEFSize = 2 * 4  // TX Event FIFO Element Size
 	sramcanTFQSize = 18 * 4 // TX FIFO/Queue Element Size
 
@@ -38,7 +40,8 @@ const (
 	sramcanFLESA = sramcanFLSSA + (sramcanFLSNbr * sramcanFLSSize)
 	sramcanRF0SA = sramcanFLESA + (sramcanFLENbr * sramcanFLESize)
 	sramcanRF1SA = sramcanRF0SA + (sramcanRF0Nbr * sramcanRF0Size)
-	sramcanTEFSA = sramcanRF1SA + (sramcanRF1Nbr * sramcanRF1Size)
+	sramcanRBSA  = sramcanRF1SA + (sramcanRF1Nbr * sramcanRF1Size)
+	sramcanTEFSA = sramcanRBSA + (sramcanRBNbr * sramcanRBSize)
 	sramcanTFQSA = sramcanTEFSA + (sramcanTEFNbr * sramcanTEFSize)
 	sramcanSize  = sramcanTFQSA + (sramcanTFQNbr * sramcanTFQSize)
 )
@@ -93,7 +96,7 @@ const (
 	mcanTFFLmask = 0x3F
 )
 
-// CAN is a STM32G0's CAN/FDCAN peripheral.
+// CAN is an STM32 FDCAN peripheral.
 type CAN struct {
 	Bus             *stm32.FDCAN_Type
 	TxAltFuncSelect uint8
@@ -199,15 +202,13 @@ func (can *CAN) Configure(config CANConfig) error {
 	// Enable configuration change.
 	can.Bus.SetCCCR_CCE(1)
 
-	if can.Bus == stm32.FDCAN1 {
-		can.Bus.SetCKDIV_PDIV(0) // No clock division.
-	}
+	can.setClockDiv()
 
 	can.Bus.SetCCCR_DAR(0)  // Enable auto retransmission.
 	can.Bus.SetCCCR_TXP(0)  // Disable transmit pause.
 	can.Bus.SetCCCR_PXHD(0) // Enable protocol exception handling.
 	can.Bus.SetCCCR_FDOE(1) // FD operation.
-	can.Bus.SetCCCR_BRSE(1) // Bit rate switching.
+	can.setCCCR_BRSE(1)     // Bit rate switching.
 
 	// Reset mode bits, then apply requested mode.
 	can.Bus.SetCCCR_TEST(0)
@@ -258,12 +259,8 @@ func (can *CAN) Configure(config CANConfig) error {
 		*(*uint32)(unsafe.Pointer(addr)) = 0
 	}
 
-	// Set filter list sizes: LSS[20:16], LSE[27:24].
-	rxgfc := can.Bus.RXGFC.Get()
-	rxgfc &= ^uint32(0x0F1F0000)
-	rxgfc |= uint32(sramcanFLSNbr) << 16
-	rxgfc |= uint32(sramcanFLENbr) << 24
-	can.Bus.RXGFC.Set(rxgfc)
+	can.configFilterGlobal()
+	can.configMessageRAMLayout()
 
 	// Start peripheral.
 	can.Bus.SetCCCR_CCE(0)
@@ -367,7 +364,7 @@ func (can *CAN) setRxCallback(cb canRxCallback) {
 		canInstances[can.instance] = can
 		// Enable RX FIFO 0 new message interrupt, routed to interrupt line 0.
 		can.Bus.SetIE_RF0NE(1)
-		can.Bus.SetILS_RxFIFO0(0)
+		can.setILS_RF0NL(0)
 		can.Bus.SetILE_EINT0(1)
 		can.Interrupt.Enable()
 	} else {

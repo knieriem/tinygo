@@ -21,6 +21,7 @@ const (
 	AF5_TIM2_21_22                = 5
 	AF6_LPUART1                   = 6
 	AF7_COMP1_2                   = 7
+	AF9_FDCAN1_FDCAN2             = 9
 
 	AF11_I2C4_ETH_TIM1x_TIM8_UART7_9_USART10 = 11
 )
