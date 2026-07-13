@@ -16,11 +16,7 @@ import (
 // Exported API in src/machine/can.go
 
 // FDCAN Message RAM configuration
-// STM32G0B1 SRAMCAN base address: 0x4000B400
-// Each FDCAN instance has its own message RAM area
 const (
-	sramcanBase = 0x4000B400
-
 	// Message RAM layout sizes (matching STM32 HAL)
 	sramcanFLSNbr = 28 // Max. Filter List Standard Number
 	sramcanFLENbr = 8  // Max. Filter List Extended Number
@@ -141,12 +137,6 @@ var (
 	errCANTimeout               = errors.New("CAN: timeout")
 	errCANTxFifoFull            = errors.New("CAN: Tx FIFO full")
 )
-
-// enableFDCANClock enables the FDCAN peripheral clock
-func enableFDCANClock() {
-	// FDCAN clock is on APB1
-	stm32.RCC.SetAPBENR1_FDCANEN(1)
-}
 
 // flags implemented as described in [CAN.SetRxCallback]
 var canRxCB [2]canRxCallback
@@ -494,13 +484,6 @@ func (can *CAN) ConfigureFilter(config CANFilterConfig) error {
 	}
 
 	return nil
-}
-
-func (can *CAN) sramBase() uintptr {
-	if can.Bus == stm32.FDCAN2 {
-		return uintptr(sramcanBase) + sramcanSize
-	}
-	return uintptr(sramcanBase)
 }
 
 // fdcanNominalBitTiming returns prescaler and segment values for the nominal (arbitration) phase.
