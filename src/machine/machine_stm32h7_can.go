@@ -51,24 +51,24 @@ func (can *CAN) configFilterGlobal() {
 
 func (can *CAN) configMessageRAMLayout() {
 	// explicitly program every RAM section's start address
-	instBase := uint32(can.instanceRAMOffset() / 4)
+	instBase := uint32(can.instanceRAMOffset())
 
-	wordOff := instBase + uint32(sramcanFLSSA/4)
+	wordOff := instBase + uint32(sramcanFLSSA)
 	can.Bus.SIDFC.Set((uint32(sramcanFLSNbr) << 16) | (wordOff << 2))
 
-	wordOff = instBase + uint32(sramcanFLESA/4)
+	wordOff = instBase + uint32(sramcanFLESA)
 	can.Bus.XIDFC.Set((uint32(sramcanFLENbr) << 16) | (wordOff << 2))
 
-	wordOff = instBase + uint32(sramcanRF0SA/4)
+	wordOff = instBase + uint32(sramcanRF0SA)
 	can.Bus.RXF0C.Set((uint32(sramcanRF0Nbr) << 16) | (wordOff << 2))
 
-	wordOff = instBase + uint32(sramcanRF1SA/4)
+	wordOff = instBase + uint32(sramcanRF1SA)
 	can.Bus.RXF1C.Set((uint32(sramcanRF1Nbr) << 16) | (wordOff << 2))
 
-	wordOff = instBase + uint32(sramcanTEFSA/4)
+	wordOff = instBase + uint32(sramcanTEFSA)
 	can.Bus.TXEFC.Set((uint32(sramcanTEFNbr) << 16) | (wordOff << 2))
 
-	wordOff = instBase + uint32(sramcanTFQSA/4)
+	wordOff = instBase + uint32(sramcanTFQSA)
 	can.Bus.TXBC.Set((uint32(sramcanTFQNbr) << 24) | (wordOff << 2))
 
 	// RXESC/TXESC: element data field size. 0x7 = 64 bytes (max FD payload)

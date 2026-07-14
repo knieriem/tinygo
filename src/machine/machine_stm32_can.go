@@ -27,14 +27,14 @@ const (
 	sramcanTEFNbr = 3  // TX Event FIFO Elements Number
 	sramcanTFQNbr = 3  // TX FIFO/Queue Elements Number
 
-	// Element sizes in bytes
-	sramcanFLSSize = 1 * 4  // Filter Standard Element Size
-	sramcanFLESize = 2 * 4  // Filter Extended Element Size
-	sramcanRF0Size = 18 * 4 // RX FIFO 0 Element Size (for 64-byte data)
-	sramcanRF1Size = 18 * 4 // RX FIFO 1 Element Size
-	sramcanRBSize  = 18 * 4 // RX Buffer Element Size
-	sramcanTEFSize = 2 * 4  // TX Event FIFO Element Size
-	sramcanTFQSize = 18 * 4 // TX FIFO/Queue Element Size
+	// Element sizes in 32-bit words
+	sramcanFLSSize = 1  // Filter Standard Element Size
+	sramcanFLESize = 2  // Filter Extended Element Size
+	sramcanRF0Size = 18 // RX FIFO 0 Element Size (for 64-byte data)
+	sramcanRF1Size = 18 // RX FIFO 1 Element Size
+	sramcanRBSize  = 18 // RX Buffer Element Size
+	sramcanTEFSize = 2  // TX Event FIFO Element Size
+	sramcanTFQSize = 18 // TX FIFO/Queue Element Size
 
 	// Start addresses (offsets from base)
 	sramcanFLSSA = 0
@@ -312,7 +312,7 @@ func (can *CAN) tx(id canID, flags canFlags, data []byte) error {
 	isFD := flags&canFlagFDF != 0 || length > 8
 
 	putIndex := (can.Bus.TXFQS.Get() >> mcanTFQPIpos) & mcanTFQPImask
-	txAddr := can.sramBase() + sramcanTFQSA + uintptr(putIndex)*sramcanTFQSize
+	txAddr := can.ramElemAddr(sramcanTFQSA, putIndex, sramcanTFQSize)
 
 	// Header word 1: identifier and flags.
 	var w1 uint32
@@ -404,7 +404,7 @@ func (can *CAN) rxPoll() error {
 func processRxFIFO0(can *CAN, cb canRxCallback) {
 	for can.Bus.RXF0S.Get()&mcanF0FLmask != 0 {
 		getIndex := (can.Bus.RXF0S.Get() >> mcanF0GIpos) & mcanF0GImask
-		rxAddr := can.sramBase() + sramcanRF0SA + uintptr(getIndex)*sramcanRF0Size
+		rxAddr := can.ramElemAddr(sramcanRF0SA, getIndex, sramcanRF0Size)
 
 		w1 := *(*uint32)(unsafe.Pointer(rxAddr))
 		w2 := *(*uint32)(unsafe.Pointer(rxAddr + 4))
@@ -472,14 +472,12 @@ func canHandleInterrupt(interrupt.Interrupt) {
 
 // ConfigureFilter configures a message acceptance filter.
 func (can *CAN) ConfigureFilter(config CANFilterConfig) error {
-	base := can.sramBase()
-
 	if config.IsExtendedID {
 		if config.Index >= sramcanFLENbr {
 			return errors.New("CAN: filter index out of range")
 		}
 
-		filterAddr := base + sramcanFLESA + (uintptr(config.Index) * sramcanFLESize)
+		filterAddr := can.ramElemAddr(sramcanFLESA, uint32(config.Index), sramcanFLESize)
 
 		w1 := (uint32(config.Config) << 29) | (config.ID1 & 0x1FFFFFFF)
 		w2 := (uint32(config.Type) << 30) | (config.ID2 & 0x1FFFFFFF)
@@ -491,7 +489,7 @@ func (can *CAN) ConfigureFilter(config CANFilterConfig) error {
 			return errors.New("CAN: filter index out of range")
 		}
 
-		filterAddr := base + sramcanFLSSA + (uintptr(config.Index) * sramcanFLSSize)
+		filterAddr := can.ramElemAddr(sramcanFLSSA, uint32(config.Index), sramcanFLSSize)
 
 		w := (uint32(config.Type) << 30) |
 			(uint32(config.Config) << 27) |
@@ -502,6 +500,10 @@ func (can *CAN) ConfigureFilter(config CANFilterConfig) error {
 	}
 
 	return nil
+}
+
+func (can *CAN) ramElemAddr(offset, index uint32, elSize int) uintptr {
+	return can.sramBase() + uintptr(offset+index*uint32(elSize))<<2
 }
 
 // fdcanNominalBitTiming returns prescaler and segment values for the nominal (arbitration) phase.
