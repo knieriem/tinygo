@@ -311,7 +311,7 @@ func (can *CAN) tx(id canID, flags canFlags, data []byte) error {
 
 	// Header word 1: identifier and flags.
 	var w1 uint32
-	if flags&canFlagESI != 0 {
+	if flags&canFlagIDE != 0 {
 		w1 = (id & 0x1FFFFFFF) | fdcanElementMaskXTD
 	} else {
 		w1 = (id & 0x7FF) << 18
