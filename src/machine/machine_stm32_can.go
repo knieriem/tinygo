@@ -18,15 +18,6 @@ import (
 
 // FDCAN Message RAM configuration
 const (
-	// Message RAM layout sizes (matching STM32 HAL)
-	sramcanFLSNbr = 28 // Max. Filter List Standard Number
-	sramcanFLENbr = 8  // Max. Filter List Extended Number
-	sramcanRF0Nbr = 3  // RX FIFO 0 Elements Number
-	sramcanRF1Nbr = 3  // RX FIFO 1 Elements Number
-	sramcanRBNbr  = 0  // Dedicated RX buffers (unused here)
-	sramcanTEFNbr = 3  // TX Event FIFO Elements Number
-	sramcanTFQNbr = 3  // TX FIFO/Queue Elements Number
-
 	// Element sizes in 32-bit words
 	sramcanFLSSize = 1  // Filter Standard Element Size
 	sramcanFLESize = 2  // Filter Extended Element Size
@@ -35,17 +26,62 @@ const (
 	sramcanRBSize  = 18 // RX Buffer Element Size
 	sramcanTEFSize = 2  // TX Event FIFO Element Size
 	sramcanTFQSize = 18 // TX FIFO/Queue Element Size
-
-	// Start addresses (offsets from base)
-	sramcanFLSSA = 0
-	sramcanFLESA = sramcanFLSSA + (sramcanFLSNbr * sramcanFLSSize)
-	sramcanRF0SA = sramcanFLESA + (sramcanFLENbr * sramcanFLESize)
-	sramcanRF1SA = sramcanRF0SA + (sramcanRF0Nbr * sramcanRF0Size)
-	sramcanRBSA  = sramcanRF1SA + (sramcanRF1Nbr * sramcanRF1Size)
-	sramcanTEFSA = sramcanRBSA + (sramcanRBNbr * sramcanRBSize)
-	sramcanTFQSA = sramcanTEFSA + (sramcanTEFNbr * sramcanTEFSize)
-	sramcanSize  = sramcanTFQSA + (sramcanTFQNbr * sramcanTFQSize)
 )
+
+// MCANRAMConfig defines the lengths of the M_CAN Message RAM sections
+type MCANRAMConfig struct {
+	StdFilterLen uint8 // LSS[7:0] Max. number of standard filter elements
+	ExtFilterLen uint8 // LSE[6:0] Max. number of extended filter elements
+
+	RxFIFO0Len   uint8 // F0S[6:0] Max. number of elements in RX FIFO 0
+	RxFIFO1Len   uint8 // F1S[6:0] Max. number of elements in RX FIFO 1
+	RxBuffersLen uint8 // Max. number of dedicated RX Buffers
+
+	TxEventFIFOLen uint8 // EVS[5:0] Max. number of elements in TX Event FIFO
+	TxFIFOQueueLen uint8 // TQFS[5:0] Max. number of elements in TX Fifo/Queue
+}
+
+// mcanRAMOffsets contains the computed start offsets of Message RAM sections
+type mcanRAMOffsets struct {
+	FLSSA mcanRAMOffset
+	FLESA mcanRAMOffset
+	RF0SA mcanRAMOffset
+	RF1SA mcanRAMOffset
+	RBSA  mcanRAMOffset
+	EFSA  mcanRAMOffset
+	TFQSA mcanRAMOffset
+}
+
+type mcanRAMOffset uint16
+
+func (words mcanRAMOffset) regVal() uint32 {
+	return uint32(words) << 2
+}
+func (words mcanRAMOffset) addr() uintptr {
+	return sramcanBase + uintptr(words<<2)
+}
+func (words mcanRAMOffset) elemAddr(index uint8, elemSize int) uintptr {
+	return sramcanBase + uintptr(words.add(index, elemSize)<<2)
+}
+func (words mcanRAMOffset) add(n uint8, elemSize int) mcanRAMOffset {
+	return words + mcanRAMOffset(n)*mcanRAMOffset(elemSize)
+}
+
+var mcanMessageRAMUsed mcanRAMOffset
+
+func (l *MCANRAMConfig) calculateOffsets(m *mcanRAMOffsets) mcanRAMOffset {
+	base := mcanMessageRAMUsed
+	m.FLSSA = base
+	m.FLESA = m.FLSSA.add(l.StdFilterLen, sramcanFLSSize)
+	m.RF0SA = m.FLESA.add(l.ExtFilterLen, sramcanFLESize)
+	m.RF1SA = m.RF0SA.add(l.RxFIFO0Len, sramcanRF0Size)
+	m.RBSA = m.RF1SA.add(l.RxFIFO1Len, sramcanRF1Size)
+	m.EFSA = m.RBSA.add(l.RxBuffersLen, sramcanRBSize)
+	m.TFQSA = m.EFSA.add(l.TxEventFIFOLen, sramcanTEFSize)
+	end := m.TFQSA.add(l.TxFIFOQueueLen, sramcanTFQSize)
+	mcanMessageRAMUsed = end
+	return end
+}
 
 // FDCAN element masks (for parsing message RAM)
 const (
@@ -106,6 +142,8 @@ type CAN struct {
 	instance        uint8
 	alwaysFD        bool
 	rxInterrupt     bool
+	RAMConfig       *MCANRAMConfig
+	ramOffsets      mcanRAMOffsets
 }
 
 // CANTransferRate represents CAN bus transfer rates
@@ -157,6 +195,7 @@ var (
 	errCANInvalidTransferRateFD = errors.New("CAN: invalid TransferRateFD")
 	errCANTimeout               = errors.New("CAN: timeout")
 	errCANTxFifoFull            = errors.New("CAN: Tx FIFO full")
+	errCANMissingRAMConfig      = errors.New("CAN: missing Message RAM config")
 )
 
 // flags implemented as described in [CAN.SetRxCallback]
@@ -254,14 +293,22 @@ func (can *CAN) Configure(config CANConfig) error {
 	// Enable timestamp counter (internal, prescaler=1).
 	can.Bus.TSCC.Set(1)
 
+	// Setup Message RAM offsets.
+	err = can.ensureRAMConfig()
+	if err != nil {
+		return err
+	}
+	size := can.RAMConfig.calculateOffsets(&can.ramOffsets)
+
 	// Clear message RAM.
-	base := can.sramBase()
-	for addr := base; addr < base+sramcanSize; addr += 4 {
+	base := sramcanBase + uintptr(can.ramOffsets.FLSSA<<2)
+	end := sramcanBase + uintptr(size<<2)
+	for addr := base; addr < end; addr += 4 {
 		*(*uint32)(unsafe.Pointer(addr)) = 0
 	}
 
 	can.configFilterGlobal()
-	can.configMessageRAMLayout()
+	can.configMessageRAM()
 
 	// Start peripheral.
 	can.Bus.SetCCCR_CCE(0)
@@ -293,8 +340,9 @@ func (can *CAN) Stop() error {
 
 // txFIFOLevel implements [CAN.TxFIFOLevel].
 func (can *CAN) txFIFOLevel() (int, int) {
+	max := int(can.RAMConfig.TxFIFOQueueLen)
 	free := int(can.Bus.TXFQS.Get() & mcanTFFLmask)
-	return sramcanTFQNbr - free, sramcanTFQNbr
+	return max - free, max
 }
 
 // tx implements [CAN.Tx].
@@ -312,7 +360,7 @@ func (can *CAN) tx(id canID, flags canFlags, data []byte) error {
 	isFD := flags&canFlagFDF != 0 || length > 8
 
 	putIndex := (can.Bus.TXFQS.Get() >> mcanTFQPIpos) & mcanTFQPImask
-	txAddr := can.ramElemAddr(sramcanTFQSA, putIndex, sramcanTFQSize)
+	txAddr := can.ramOffsets.TFQSA.elemAddr(uint8(putIndex), sramcanTFQSize)
 
 	// Header word 1: identifier and flags.
 	var w1 uint32
@@ -359,7 +407,7 @@ func (can *CAN) rxFIFOLevel() (int, int) {
 		return 0, 0
 	}
 	level := int(can.Bus.RXF0S.Get() & mcanF0FLmask)
-	return level, sramcanRF0Nbr
+	return level, int(can.RAMConfig.RxFIFO0Len)
 }
 
 // setRxCallback implements [CAN.SetRxCallback].
@@ -404,7 +452,7 @@ func (can *CAN) rxPoll() error {
 func processRxFIFO0(can *CAN, cb canRxCallback) {
 	for can.Bus.RXF0S.Get()&mcanF0FLmask != 0 {
 		getIndex := (can.Bus.RXF0S.Get() >> mcanF0GIpos) & mcanF0GImask
-		rxAddr := can.ramElemAddr(sramcanRF0SA, getIndex, sramcanRF0Size)
+		rxAddr := can.ramOffsets.RF0SA.elemAddr(uint8(getIndex), sramcanRF0Size)
 
 		w1 := *(*uint32)(unsafe.Pointer(rxAddr))
 		w2 := *(*uint32)(unsafe.Pointer(rxAddr + 4))
@@ -473,11 +521,11 @@ func canHandleInterrupt(interrupt.Interrupt) {
 // ConfigureFilter configures a message acceptance filter.
 func (can *CAN) ConfigureFilter(config CANFilterConfig) error {
 	if config.IsExtendedID {
-		if config.Index >= sramcanFLENbr {
+		if config.Index >= can.RAMConfig.ExtFilterLen {
 			return errors.New("CAN: filter index out of range")
 		}
 
-		filterAddr := can.ramElemAddr(sramcanFLESA, uint32(config.Index), sramcanFLESize)
+		filterAddr := can.ramOffsets.FLESA.elemAddr(config.Index, sramcanFLESize)
 
 		w1 := (uint32(config.Config) << 29) | (config.ID1 & 0x1FFFFFFF)
 		w2 := (uint32(config.Type) << 30) | (config.ID2 & 0x1FFFFFFF)
@@ -485,11 +533,11 @@ func (can *CAN) ConfigureFilter(config CANFilterConfig) error {
 		*(*uint32)(unsafe.Pointer(filterAddr)) = w1
 		*(*uint32)(unsafe.Pointer(filterAddr + 4)) = w2
 	} else {
-		if config.Index >= sramcanFLSNbr {
+		if config.Index >= can.RAMConfig.StdFilterLen {
 			return errors.New("CAN: filter index out of range")
 		}
 
-		filterAddr := can.ramElemAddr(sramcanFLSSA, uint32(config.Index), sramcanFLSSize)
+		filterAddr := can.ramOffsets.FLSSA.elemAddr(config.Index, sramcanFLSSize)
 
 		w := (uint32(config.Type) << 30) |
 			(uint32(config.Config) << 27) |
@@ -500,10 +548,6 @@ func (can *CAN) ConfigureFilter(config CANFilterConfig) error {
 	}
 
 	return nil
-}
-
-func (can *CAN) ramElemAddr(offset, index uint32, elSize int) uintptr {
-	return can.sramBase() + uintptr(offset+index*uint32(elSize))<<2
 }
 
 // fdcanNominalBitTiming returns prescaler and segment values for the nominal (arbitration) phase.

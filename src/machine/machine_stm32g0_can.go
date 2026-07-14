@@ -6,22 +6,24 @@ import "device/stm32"
 
 const (
 	// STM32G0B1 SRAMCAN base address
-	sramcanBase = 0x4000B400
+	sramcanBase uintptr = 0x4000B400
 
 	numFDCANInstances = 2
 )
+
+var mcanRAMFixed = MCANRAMConfig{
+	StdFilterLen:   28,
+	ExtFilterLen:   8,
+	RxFIFO0Len:     3,
+	RxFIFO1Len:     3,
+	TxEventFIFOLen: 3,
+	TxFIFOQueueLen: 3,
+}
 
 // enableFDCANClock enables the FDCAN peripheral clock
 func enableFDCANClock() {
 	// FDCAN clock is on APB1
 	stm32.RCC.SetAPBENR1_FDCANEN(1)
-}
-
-func (can *CAN) sramBase() uintptr {
-	if can.Bus == stm32.FDCAN2 {
-		return uintptr(sramcanBase) + sramcanSize
-	}
-	return uintptr(sramcanBase)
 }
 
 func (can *CAN) setClockDiv() {
@@ -44,12 +46,20 @@ func (can *CAN) configFilterGlobal() {
 	// Note: this implicitely sets both ANFS and ANFE to 0b00.
 	rxgfc := can.Bus.RXGFC.Get()
 	rxgfc &= ^uint32(0x0F1F0000)
-	rxgfc |= uint32(sramcanFLSNbr) << 16
-	rxgfc |= uint32(sramcanFLENbr) << 24
+	rxgfc |= uint32(can.RAMConfig.StdFilterLen) << 16
+	rxgfc |= uint32(can.RAMConfig.ExtFilterLen) << 24
 	can.Bus.RXGFC.Set(rxgfc)
 }
 
-func (can *CAN) configMessageRAMLayout() {
+func (can *CAN) ensureRAMConfig() error {
+	if l := can.RAMConfig; l != nil {
+		return nil
+	}
+	can.RAMConfig = &mcanRAMFixed
+	return nil
+}
+
+func (can *CAN) configMessageRAM() {
 	// Nothing to do here. The G0x1 series uses a simplified version of the
 	// M_CAN silicon, the Message RAM layout is fixed.
 }
