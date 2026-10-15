@@ -100,3 +100,13 @@ func lengthToDLC(length uint8) (dlc byte) {
 	}
 	return dlc
 }
+
+// CANBitTiming defines the CAN bit timing values.
+// The length of a time quantum (tq), is the CAN clock period
+// multiplied with the prescaler value.
+type CANBitTiming struct {
+	Prescaler uint16 // the CAN peripheral's programmable prescaler
+	TSeg1     uint16 // length of the prop. time seg. + phase buffer seg. 1
+	TSeg2     uint8  // length of the phase buffer segment 2, in tq
+	SJW       uint8  // resynchronization jump width, in tq
+}

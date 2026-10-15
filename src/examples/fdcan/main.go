@@ -7,7 +7,16 @@ import (
 	"device/stm32"
 	"machine"
 	"time"
+
+	"github.com/tinygo-org/tinygo/src/examples/fdcan/internal/timing"
+	"github.com/tinygo-org/tinygo/src/examples/fdcan/internal/timing/dev"
 )
+
+const fCAN = 64e6
+
+// Bit timing calculation (likely performed at compile time).
+var nominalBT = bitTiming(250e3, 800, &dev.MCAN.Nominal)
+var dataBT = bitTiming(250e3, 700, dev.MCAN.Data)
 
 var led = machine.LED
 
@@ -16,20 +25,15 @@ func main() {
 
 	can1 := machine.CAN1
 	err := can1.Configure(machine.CANConfig{
-		TransferRate:   machine.FDCANTransferRate500kbps,
-		TransferRateFD: machine.FDCANTransferRate500kbps,
-		Rx:             CAN_RX,
-		Tx:             CAN_TX,
-		Standby:        CAN_STANDBY,
+		Nominal: nominalBT,
+		Data:    dataBT,
+		Rx:      CAN_RX,
+		Tx:      CAN_TX,
+		Standby: CAN_STANDBY,
 	})
 
 	if err != nil {
-		// signal error
-		for {
-			toggleLED()
-			time.Sleep(time.Millisecond * 20)
-			machine.Watchdog.Update()
-		}
+		signalError()
 	}
 
 	can1.SetRxCallback(func(data []byte, id uint32, timestamp, flags uint32) {
@@ -65,6 +69,22 @@ func main() {
 	}
 }
 
+func bitTiming(bitrate uint32, sample1000 int, c *timing.Constraints) machine.CANBitTiming {
+	var bt timing.BitTiming
+	err := timing.CalcBitTiming(&bt, fCAN, bitrate, timing.Frac1000(sample1000), c)
+	if err == nil {
+		bt.EnsureSJW(c.SJWMax, 0)
+	}
+	// if CalcBitTiming failed, it won't have modified bt, so can.Configure
+	// will detect invalid bit timing and return an error.
+	return machine.CANBitTiming{
+		Prescaler: bt.Prescaler,
+		TSeg1:     bt.TSeg1,
+		TSeg2:     bt.TSeg2,
+		SJW:       bt.SJW,
+	}
+}
+
 var ledOn bool
 var ledPulse bool
 var ledTicks int
@@ -91,4 +111,12 @@ func pulseLED() {
 	led.Low()
 	ledPulse = true
 	pulseEnd = ledTicks + 3
+}
+
+func signalError() {
+	for {
+		toggleLED()
+		time.Sleep(time.Millisecond * 20)
+		machine.Watchdog.Update()
+	}
 }

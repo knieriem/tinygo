@@ -146,18 +146,6 @@ type CAN struct {
 	ramOffsets      mcanRAMOffsets
 }
 
-// CANTransferRate represents CAN bus transfer rates
-type CANTransferRate uint32
-
-const (
-	FDCANTransferRate125kbps  CANTransferRate = 125000
-	FDCANTransferRate250kbps  CANTransferRate = 250000
-	FDCANTransferRate500kbps  CANTransferRate = 500000
-	FDCANTransferRate1000kbps CANTransferRate = 1000000
-	FDCANTransferRate2000kbps CANTransferRate = 2000000 // FD only
-	FDCANTransferRate4000kbps CANTransferRate = 4000000 // FD only
-)
-
 // CANMode represents the FDCAN operating mode
 type CANMode uint8
 
@@ -170,8 +158,8 @@ const (
 
 // CANConfig holds FDCAN configuration parameters
 type CANConfig struct {
-	TransferRate      CANTransferRate // Nominal bit rate (arbitration phase)
-	TransferRateFD    CANTransferRate // Data bit rate (data phase), must be >= TransferRate
+	Nominal           CANBitTiming
+	Data              CANBitTiming
 	Mode              CANMode
 	Tx                Pin
 	Rx                Pin
@@ -191,11 +179,10 @@ type CANFilterConfig struct {
 }
 
 var (
-	errCANInvalidTransferRate   = errors.New("CAN: invalid TransferRate")
-	errCANInvalidTransferRateFD = errors.New("CAN: invalid TransferRateFD")
-	errCANTimeout               = errors.New("CAN: timeout")
-	errCANTxFifoFull            = errors.New("CAN: Tx FIFO full")
-	errCANMissingRAMConfig      = errors.New("CAN: missing Message RAM config")
+	errCANInvalidBitTiming = errors.New("CAN: invalid bit timing")
+	errCANTimeout          = errors.New("CAN: timeout")
+	errCANTxFifoFull       = errors.New("CAN: Tx FIFO full")
+	errCANMissingRAMConfig = errors.New("CAN: missing Message RAM config")
 )
 
 // flags implemented as described in [CAN.SetRxCallback]
@@ -267,28 +254,15 @@ func (can *CAN) Configure(config CANConfig) error {
 		can.Bus.SetTEST_LBCK(1)
 	}
 
-	// Nominal bit timing (64 MHz FDCAN clock, 16 tq/bit, ~80% sample point).
-	if config.TransferRate == 0 {
-		config.TransferRate = FDCANTransferRate500kbps
-	}
-	nbrp, ntseg1, ntseg2, nsjw, err := fdcanNominalBitTiming(config.TransferRate)
+	err := can.setNominalBitTiming(&config.Nominal)
 	if err != nil {
 		return err
 	}
-	can.Bus.NBTP.Set(((nsjw - 1) << 25) | ((nbrp - 1) << 16) | ((ntseg1 - 1) << 8) | (ntseg2 - 1))
 
-	// Data bit timing (FD phase).
-	if config.TransferRateFD == 0 {
-		config.TransferRateFD = FDCANTransferRate1000kbps
-	}
-	if config.TransferRateFD < config.TransferRate {
-		return errCANInvalidTransferRateFD
-	}
-	dbrp, dtseg1, dtseg2, dsjw, err := fdcanDataBitTiming(config.TransferRateFD)
+	err = can.setDataBitTiming(&config.Data)
 	if err != nil {
 		return err
 	}
-	can.Bus.DBTP.Set(((dbrp - 1) << 16) | ((dtseg1 - 1) << 8) | ((dtseg2 - 1) << 4) | (dsjw - 1))
 
 	// Enable timestamp counter (internal, prescaler=1).
 	can.Bus.TSCC.Set(1)
@@ -550,39 +524,25 @@ func (can *CAN) ConfigureFilter(config CANFilterConfig) error {
 	return nil
 }
 
-// fdcanNominalBitTiming returns prescaler and segment values for the nominal (arbitration) phase.
-// STM32G0 FDCAN clock = 64 MHz, 16 time quanta per bit, ~80% sample point.
-func fdcanNominalBitTiming(rate CANTransferRate) (brp, tseg1, tseg2, sjw uint32, err error) {
-	switch rate {
-	case FDCANTransferRate125kbps:
-		return 32, 13, 2, 4, nil
-	case FDCANTransferRate250kbps:
-		return 16, 13, 2, 4, nil
-	case FDCANTransferRate500kbps:
-		return 8, 13, 2, 4, nil
-	case FDCANTransferRate1000kbps:
-		return 4, 13, 2, 4, nil
-	default:
-		return 0, 0, 0, 0, errCANInvalidTransferRate
+// Keeping the similar implementations of setNominalBitTiming and setDataBitTiming
+// separate appears to help the compiler to perform a bit timing calculation
+// in the main program at compile time, and reduce binary size.
+func (can *CAN) setNominalBitTiming(t *CANBitTiming) error {
+	if t.TSeg1 == 0 || t.TSeg2 == 0 {
+		return errCANInvalidBitTiming
 	}
+	nsjw := uint32(max(t.SJW, 1))
+	nbrp := uint32(max(t.Prescaler, 1))
+	can.Bus.NBTP.Set(((nsjw - 1) << 25) | ((nbrp - 1) << 16) | ((uint32(t.TSeg1) - 1) << 8) | (uint32(t.TSeg2) - 1))
+	return nil
 }
 
-// fdcanDataBitTiming returns prescaler and segment values for the data phase (FD).
-func fdcanDataBitTiming(rate CANTransferRate) (brp, tseg1, tseg2, sjw uint32, err error) {
-	switch rate {
-	case FDCANTransferRate125kbps:
-		return 32, 13, 2, 4, nil
-	case FDCANTransferRate250kbps:
-		return 16, 13, 2, 4, nil
-	case FDCANTransferRate500kbps:
-		return 8, 13, 2, 4, nil
-	case FDCANTransferRate1000kbps:
-		return 4, 13, 2, 4, nil
-	case FDCANTransferRate2000kbps:
-		return 2, 13, 2, 4, nil
-	case FDCANTransferRate4000kbps:
-		return 1, 13, 2, 4, nil
-	default:
-		return 0, 0, 0, 0, errCANInvalidTransferRateFD
+func (can *CAN) setDataBitTiming(t *CANBitTiming) error {
+	if t.TSeg1 == 0 || t.TSeg2 == 0 {
+		return errCANInvalidBitTiming
 	}
+	sjw := uint32(max(t.SJW, 1))
+	brp := uint32(max(t.Prescaler, 1))
+	can.Bus.DBTP.Set(((brp - 1) << 16) | (uint32(t.TSeg1-1) << 8) | (uint32(t.TSeg2-1) << 4) | (sjw - 1))
+	return nil
 }
